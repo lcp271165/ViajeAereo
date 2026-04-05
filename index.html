@@ -54,19 +54,18 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
         }
 
-        /* Select personalizado */
-        select {
+        /* Input personalizado */
+        input[type="text"] {
             background-color: rgba(0, 20, 40, 0.8);
             color: #48e5e5;
             border: 1px solid rgba(72, 229, 229, 0.4);
             padding: 8px 12px;
             border-radius: 6px;
             outline: none;
-            appearance: none;
-            cursor: pointer;
+            width: 100%;
         }
 
-        select:focus {
+        input[type="text"]:focus {
             border-color: #48e5e5;
             box-shadow: 0 0 8px rgba(72, 229, 229, 0.5);
         }
@@ -207,10 +206,9 @@
 
                 <div class="flex flex-col">
                     <label class="text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Origen:</label>
-                    <div class="relative">
-                        <select id="sel-origin" class="w-48 text-sm font-bold">
-                            <!-- Opciones cargadas por JS -->
-                        </select>
+                    <div class="relative w-48">
+                        <input type="text" id="sel-origin" list="cities-list" class="w-full text-sm font-bold"
+                            placeholder="Origen...">
                     </div>
                 </div>
 
@@ -231,10 +229,9 @@
 
                 <div class="flex flex-col">
                     <label class="text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Destino:</label>
-                    <div class="relative">
-                        <select id="sel-dest" class="w-48 text-sm font-bold">
-                            <!-- Opciones cargadas por JS -->
-                        </select>
+                    <div class="relative w-48">
+                        <input type="text" id="sel-dest" list="cities-list" class="w-full text-sm font-bold"
+                            placeholder="Destino...">
                     </div>
                 </div>
 
@@ -274,18 +271,19 @@
         const lblTime = document.getElementById('lbl-time');
         const floatingLabel = document.getElementById('floating-label');
 
-        // Inicializar selectores
-        Object.keys(cities).forEach(key => {
-            const opt1 = document.createElement('option');
-            opt1.value = key; opt1.text = cities[key].name;
-            selOrigin.add(opt1);
+        // Inicializar datalist
+        const citiesList = document.createElement('datalist');
+        citiesList.id = 'cities-list';
+        document.body.appendChild(citiesList);
 
-            const opt2 = document.createElement('option');
-            opt2.value = key; opt2.text = cities[key].name;
-            selDest.add(opt2);
+        Object.keys(cities).forEach(key => {
+            const opt = document.createElement('option');
+            opt.value = cities[key].name;
+            citiesList.appendChild(opt);
         });
-        selOrigin.value = 'JFK';
-        selDest.value = 'CDG';
+
+        selOrigin.value = cities['JFK'].name;
+        selDest.value = cities['CDG'].name;
 
         // --- 2. CONFIGURACIÓN THREE.JS ---
         const scene = new THREE.Scene();
@@ -391,12 +389,44 @@
             return `${h}h ${m}m`;
         }
 
-        // --- 5. DIBUJAR ARCOS ---
+        // --- 5. DIBUJAR ARCOS Y BUSCAR CIUDADES ---
         let currentRouteGroup = new THREE.Group();
         earthGroup.add(currentRouteGroup);
         let midPoint3D = new THREE.Vector3(); // Para rastrear la etiqueta flotante
 
-        function drawRoute(originKey, destKey) {
+        async function getCityData(cityName) {
+            if (!cityName) return null;
+            // Buscar en ciudades locales
+            for (let key in cities) {
+                if (cities[key].name.toLowerCase() === cityName.toLowerCase() || key.toLowerCase() === cityName.toLowerCase()) {
+                    return cities[key];
+                }
+            }
+
+            // Si no existe, usar Open-Meteo Geocoding API
+            try {
+                const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=es`);
+                const data = await response.json();
+                if (data.results && data.results.length > 0) {
+                    const result = data.results[0];
+                    const admin = result.admin1 ? `, ${result.admin1}` : (result.country ? `, ${result.country}` : '');
+                    const newCity = {
+                        name: result.name + admin,
+                        lat: result.latitude,
+                        lon: result.longitude,
+                        color: 0x48e5e5
+                    };
+                    const newKey = `NEW_${Math.random().toString(36).substr(2, 5)}`;
+                    cities[newKey] = newCity;
+                    return newCity;
+                }
+            } catch (e) {
+                console.error("Error buscando ciudad", e);
+            }
+            return null;
+        }
+
+        async function drawRoute(originName, destName) {
             // Limpiar ruta anterior
             while (currentRouteGroup.children.length > 0) {
                 const child = currentRouteGroup.children[0];
@@ -405,10 +435,10 @@
                 if (child.material) child.material.dispose();
             }
 
-            const origin = cities[originKey];
-            const dest = cities[destKey];
+            const origin = await getCityData(originName);
+            const dest = await getCityData(destName);
 
-            if (!origin || !dest || originKey === destKey) {
+            if (!origin || !dest || origin.name === dest.name) {
                 floatingLabel.style.opacity = 0;
                 return;
             }
