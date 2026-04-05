@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Vuelos Intercontinentales</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Three.js y OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050a15;
+            color: white;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .pointer-events-auto {
+            pointer-events: auto;
+        }
+
+        /* Estilos Glassmorphism */
+        .glass-panel {
+            background: rgba(10, 25, 47, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 12px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Select personalizado */
+        select {
+            background-color: rgba(0, 20, 40, 0.8);
+            color: #48e5e5;
+            border: 1px solid rgba(72, 229, 229, 0.4);
+            padding: 8px 12px;
+            border-radius: 6px;
+            outline: none;
+            appearance: none;
+            cursor: pointer;
+        }
+
+        select:focus {
+            border-color: #48e5e5;
+            box-shadow: 0 0 8px rgba(72, 229, 229, 0.5);
+        }
+
+        /* Etiqueta flotante 3D */
+        #floating-label {
+            position: absolute;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #floating-label::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 8px 8px 0;
+            border-style: solid;
+            border-color: rgba(10, 25, 47, 0.8) transparent transparent transparent;
+        }
+
+        /* Barras de comparación */
+        .bar-bg {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 2px;
+        }
+
+        .c-orange {
+            background: #ff7b54;
+        }
+
+        .c-blue {
+            background: #48e5e5;
+        }
+
+        .c-purple {
+            background: #b056ff;
+        }
+
+        .c-yellow {
+            background: #ffd054;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Contenedor 3D -->
+    <div id="canvas-container"></div>
+
+    <!-- Capa de Interfaz -->
+    <div id="ui-layer" class="flex flex-col justify-between p-6">
+
+        <!-- Etiqueta Flotante (Se mueve con JS) -->
+        <div id="floating-label"
+            class="glass-panel px-4 py-2 text-center shadow-[0_0_15px_rgba(255,123,84,0.4)] border-[#ff7b54]">
+            <div class="text-xs text-gray-300 tracking-wider">ESTIMACIÓN DE VIAJE</div>
+            <div class="text-lg font-bold text-white"><span id="lbl-dist">-- KM</span> | <span id="lbl-time">--h
+                    --m</span></div>
+        </div>
+
+        <!-- Panel Lateral Derecho (Comparación) -->
+        <div class="absolute right-6 top-1/2 transform -translate-y-1/2 w-72 pointer-events-auto hidden md:block">
+            <h3 class="text-xs font-bold text-gray-300 tracking-widest mb-4">COMPARACIÓN DE DISTANCIAS Y TIEMPOS</h3>
+
+            <div class="space-y-4 text-xs font-semibold tracking-wide">
+                <div>
+                    <div class="flex justify-between text-gray-400"><span class="text-white">NUEVA YORK -
+                            PARÍS</span><span>~5800 KM | 7h 15m</span></div>
+                    <div class="bar-bg">
+                        <div class="bar-fill c-orange" style="width: 64%;"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-gray-400"><span class="text-white">LONDRES -
+                            MIAMI</span><span>~7100 KM | 8h 55m</span></div>
+                    <div class="bar-bg">
+                        <div class="bar-fill c-blue" style="width: 78%;"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-gray-400"><span class="text-white">MADRID -
+                            CDMX</span><span>~9000 KM | 11h 10m</span></div>
+                    <div class="bar-bg">
+                        <div class="bar-fill c-purple" style="width: 100%;"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex justify-between text-gray-400"><span class="text-white">PARÍS -
+                            CDMX</span><span>~9200 KM | 11h 30m</span></div>
+                    <div class="bar-bg">
+                        <div class="bar-fill c-yellow" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel Informativo: Curvatura -->
+            <div class="glass-panel p-3 mt-8">
+                <h4 class="text-[10px] text-gray-300 uppercase mb-2 text-center">Efecto de Curvatura en Rutas</h4>
+                <div class="flex items-center justify-between space-x-2 text-[10px]">
+                    <div class="bg-black/50 p-2 rounded border border-gray-700 w-1/2 text-center">
+                        <div class="text-gray-400 mb-1">Mapa Plano 2D</div>
+                        <div class="h-[1px] w-full bg-[#ff7b54] my-2"></div>
+                        <div class="text-gray-500 text-[8px]">Línea recta irreal</div>
+                    </div>
+                    <span class="text-gray-500 font-bold">VS</span>
+                    <div
+                        class="bg-black/50 p-2 rounded border border-[#48e5e5]/40 w-1/2 text-center relative overflow-hidden">
+                        <div class="text-[#48e5e5] mb-1">Globo 3D</div>
+                        <svg class="w-full h-4 mx-auto" viewBox="0 0 100 20">
+                            <path d="M 10 20 Q 50 -10 90 20" fill="transparent" stroke="#48e5e5" stroke-width="2" />
+                        </svg>
+                        <div class="text-gray-500 text-[8px]">Ruta ortodrómica real</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-grow"></div>
+
+        <!-- Controles Inferiores -->
+        <div class="w-full flex justify-center pb-6">
+            <div
+                class="glass-panel p-4 flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6 pointer-events-auto">
+
+                <div class="flex flex-col">
+                    <label class="text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Origen:</label>
+                    <div class="relative">
+                        <select id="sel-origin" class="w-48 text-sm font-bold">
+                            <!-- Opciones cargadas por JS -->
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Icono de intercambio -->
+                <div class="text-[#48e5e5] opacity-70">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7 10v12" />
+                        <path
+                            d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"
+                            style="display:none" />
+                        <path d="m3 16 4 4 4-4" />
+                        <path d="M7 20V4" />
+                        <path d="m21 8-4-4-4 4" />
+                        <path d="M17 4v16" />
+                    </svg>
+                </div>
+
+                <div class="flex flex-col">
+                    <label class="text-[10px] text-gray-400 mb-1 uppercase tracking-wider">Destino:</label>
+                    <div class="relative">
+                        <select id="sel-dest" class="w-48 text-sm font-bold">
+                            <!-- Opciones cargadas por JS -->
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Logo LCP Soft 2026 -->
+        <div
+            class="absolute bottom-6 left-6 text-[10px] text-[#48e5e5] opacity-40 font-bold tracking-widest select-none pointer-events-none">
+            LCP SOFT 2026
+        </div>
+    </div>
+
+    <!-- Scripts de la Aplicación -->
+    <script>
+        // --- 1. DATOS DE CIUDADES ---
+        const cities = {
+            JFK: { name: "NUEVA YORK (JFK)", lat: 40.6413, lon: -73.7781, color: 0xff7b54 },
+            MIA: { name: "MIAMI (MIA)", lat: 25.7959, lon: -80.2870, color: 0x48e5e5 },
+            CDMX: { name: "CIUDAD DE MÉXICO", lat: 19.4326, lon: -99.1332, color: 0x48e5e5 },
+            BOG: { name: "BOGOTÁ (BOG)", lat: 4.7109, lon: -74.0720, color: 0x48e5e5 },
+            GRU: { name: "SÃO PAULO (GRU)", lat: -23.4356, lon: -46.4731, color: 0x48e5e5 },
+
+            CDG: { name: "PARÍS (CDG)", lat: 49.0097, lon: 2.5479, color: 0xff7b54 },
+            LHR: { name: "LONDRES (LHR)", lat: 51.4700, lon: -0.4543, color: 0x48e5e5 },
+            MAD: { name: "MADRID (MAD)", lat: 40.4983, lon: -3.5676, color: 0xb056ff },
+            FRA: { name: "FRÁNCFORT (FRA)", lat: 50.0333, lon: 8.5705, color: 0x48e5e5 },
+            FCO: { name: "ROMA (FCO)", lat: 41.8002, lon: 12.2388, color: 0x48e5e5 }
+        };
+
+        const EARTH_RADIUS = 10;
+
+        // Elementos de la UI
+        const selOrigin = document.getElementById('sel-origin');
+        const selDest = document.getElementById('sel-dest');
+        const lblDist = document.getElementById('lbl-dist');
+        const lblTime = document.getElementById('lbl-time');
+        const floatingLabel = document.getElementById('floating-label');
+
+        // Inicializar selectores
+        Object.keys(cities).forEach(key => {
+            const opt1 = document.createElement('option');
+            opt1.value = key; opt1.text = cities[key].name;
+            selOrigin.add(opt1);
+
+            const opt2 = document.createElement('option');
+            opt2.value = key; opt2.text = cities[key].name;
+            selDest.add(opt2);
+        });
+        selOrigin.value = 'JFK';
+        selDest.value = 'CDG';
+
+        // --- 2. CONFIGURACIÓN THREE.JS ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050a15, 0.015);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 10, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 12;
+        controls.maxDistance = 40;
+        controls.enablePan = false;
+
+        // Luces
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 3, 5);
+        scene.add(dirLight);
+
+        const blueLight = new THREE.PointLight(0x0088ff, 2, 50);
+        blueLight.position.set(-15, 5, -15);
+        scene.add(blueLight);
+
+        // --- 3. CREAR LA TIERRA ---
+        // Grupo para rotar todo el planeta y sus rutas
+        const earthGroup = new THREE.Group();
+        scene.add(earthGroup);
+
+        const sphereGeo = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
+
+        // Material del planeta (Textura o fallback de color)
+        const textureLoader = new THREE.TextureLoader();
+        const earthMat = new THREE.MeshStandardMaterial({
+            color: 0x112233,
+            roughness: 0.8,
+            metalness: 0.1,
+            transparent: true,
+            opacity: 0.95
+        });
+
+        // Intentar cargar una textura de mapa de elevación estilizada si está disponible en la web (usamos un fallback elegante por defecto)
+        textureLoader.load('https://unpkg.com/three-globe/example/img/earth-water.png', function (texture) {
+            earthMat.map = texture;
+            earthMat.color.setHex(0x224466); // Tinte azulado para encajar en el tema oscuro
+            earthMat.needsUpdate = true;
+        });
+
+        const earth = new THREE.Mesh(sphereGeo, earthMat);
+        earthGroup.add(earth);
+
+        // Resplandor atmosférico (Atmosphere Glow)
+        const atmosGeo = new THREE.SphereGeometry(EARTH_RADIUS * 1.05, 64, 64);
+        const atmosMat = new THREE.MeshBasicMaterial({
+            color: 0x48e5e5,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending
+        });
+        const atmos = new THREE.Mesh(atmosGeo, atmosMat);
+        earthGroup.add(atmos);
+
+        // --- 4. LÓGICA DE RUTAS Y MATEMÁTICAS ---
+
+        // Convertir Latitud/Longitud a Vector3 3D
+        function getPosFromLatLon(lat, lon, radius) {
+            var phi = (90 - lat) * (Math.PI / 180);
+            var theta = (lon + 180) * (Math.PI / 180);
+
+            var x = -(radius) * Math.sin(phi) * Math.cos(theta);
+            var z = (radius) * Math.sin(phi) * Math.sin(theta);
+            var y = (radius) * Math.cos(phi);
+
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // Fórmula Haversine para distancia real en KM
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radio de la tierra en km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return Math.round(R * c);
+        }
+
+        // Estimar tiempo de vuelo (~800km/h + 45min despegue/aterrizaje)
+        function getFlightTime(distanceKm) {
+            const hoursDec = (distanceKm / 800) + 0.75;
+            const h = Math.floor(hoursDec);
+            const m = Math.round((hoursDec - h) * 60);
+            return `${h}h ${m}m`;
+        }
+
+        // --- 5. DIBUJAR ARCOS ---
+        let currentRouteGroup = new THREE.Group();
+        earthGroup.add(currentRouteGroup);
+        let midPoint3D = new THREE.Vector3(); // Para rastrear la etiqueta flotante
+
+        function drawRoute(originKey, destKey) {
+            // Limpiar ruta anterior
+            while (currentRouteGroup.children.length > 0) {
+                const child = currentRouteGroup.children[0];
+                currentRouteGroup.remove(child);
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) child.material.dispose();
+            }
+
+            const origin = cities[originKey];
+            const dest = cities[destKey];
+
+            if (!origin || !dest || originKey === destKey) {
+                floatingLabel.style.opacity = 0;
+                return;
+            }
+
+            const startPos = getPosFromLatLon(origin.lat, origin.lon, EARTH_RADIUS);
+            const endPos = getPosFromLatLon(dest.lat, dest.lon, EARTH_RADIUS);
+
+            // Calcular distancia para la UI
+            const distance = getDistance(origin.lat, origin.lon, dest.lat, dest.lon);
+            lblDist.innerText = `${distance} KM`;
+            lblTime.innerText = getFlightTime(distance);
+            floatingLabel.style.opacity = 1;
+
+            // --- Crear Arco 3D ---
+            // Calcular el punto medio y elevarlo según la distancia para simular la curvatura
+            const distance3D = startPos.distanceTo(endPos);
+            const midPos = startPos.clone().lerp(endPos, 0.5);
+            midPos.normalize();
+            // Elevar el punto medio: a mayor distancia, mayor el arco
+            const arcHeight = distance3D * 0.35;
+            midPos.multiplyScalar(EARTH_RADIUS + arcHeight);
+
+            // Guardar para actualizar la UI 2D
+            midPoint3D = midPos.clone();
+
+            const curve = new THREE.QuadraticBezierCurve3(startPos, midPos, endPos);
+            const points = curve.getPoints(50);
+            const curveGeo = new THREE.BufferGeometry().setFromPoints(points);
+
+            // Material del arco principal (Naranja Brillante como en la imagen)
+            const curveMat = new THREE.LineBasicMaterial({
+                color: 0xff7b54,
+                linewidth: 3, // Ojo: WebGL suele ignorar >1 pero se intenta
+                transparent: true,
+                opacity: 0.9
+            });
+            const curvedLine = new THREE.Line(curveGeo, curveMat);
+            currentRouteGroup.add(curvedLine);
+
+            // Añadir marcadores (Puntos) en las ciudades
+            const markerGeo = new THREE.SphereGeometry(0.15, 16, 16);
+            const startMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const startMarker = new THREE.Mesh(markerGeo, startMarkerMat);
+            startMarker.position.copy(startPos);
+            currentRouteGroup.add(startMarker);
+
+            const endMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const endMarker = new THREE.Mesh(markerGeo, endMarkerMat);
+            endMarker.position.copy(endPos);
+            currentRouteGroup.add(endMarker);
+
+            // Centrar la cámara en la ruta (opcional, rotamos la tierra en su lugar)
+            // Calculamos hacia donde mirar (el punto medio pero a nivel del suelo)
+            const lookAtPoint = startPos.clone().lerp(endPos, 0.5).normalize().multiplyScalar(EARTH_RADIUS);
+
+            // Animación suave de rotación de la tierra para mostrar la ruta
+            const targetRotationY = Math.atan2(lookAtPoint.x, lookAtPoint.z);
+            // La rotación exacta dependerá de donde esté la cámara, simplificamos ajustando el grupo
+            // earthGroup.rotation.y = targetRotationY; 
+        }
+
+        // Rutas secundarias (líneas punteadas de fondo)
+        function createBackgroundRoutes() {
+            const bgRoutes = [
+                ['LHR', 'MIA'], ['CDG', 'CDMX'], ['MAD', 'CDMX'], ['FRA', 'JFK']
+            ];
+
+            bgRoutes.forEach(pair => {
+                const p1 = cities[pair[0]];
+                const p2 = cities[pair[1]];
+                if (!p1 || !p2) return;
+
+                const startPos = getPosFromLatLon(p1.lat, p1.lon, EARTH_RADIUS);
+                const endPos = getPosFromLatLon(p2.lat, p2.lon, EARTH_RADIUS);
+
+                const midPos = startPos.clone().lerp(endPos, 0.5);
+                midPos.normalize().multiplyScalar(EARTH_RADIUS + startPos.distanceTo(endPos) * 0.3);
+
+                const curve = new THREE.QuadraticBezierCurve3(startPos, midPos, endPos);
+                const points = curve.getPoints(40);
+
+                const curveGeo = new THREE.BufferGeometry().setFromPoints(points);
+                const curveMat = new THREE.LineDashedMaterial({
+                    color: 0x48e5e5,
+                    dashSize: 0.3,
+                    gapSize: 0.3,
+                    transparent: true,
+                    opacity: 0.4
+                });
+
+                const line = new THREE.Line(curveGeo, curveMat);
+                line.computeLineDistances(); // Necesario para LineDashedMaterial
+                earthGroup.add(line);
+            });
+        }
+
+        // --- 6. EVENTOS DE UI Y RENDER LOOP ---
+        selOrigin.addEventListener('change', () => drawRoute(selOrigin.value, selDest.value));
+        selDest.addEventListener('change', () => drawRoute(selOrigin.value, selDest.value));
+
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Actualizar la posición de la etiqueta 2D sobre la ruta 3D
+        function updateFloatingLabel() {
+            if (floatingLabel.style.opacity === "0") return;
+
+            // Clonar punto medio y aplicar la transformación global del grupo de la Tierra
+            const vector = midPoint3D.clone();
+            vector.applyMatrix4(earthGroup.matrixWorld);
+
+            // Proyectar coordenadas 3D a coordenadas 2D de pantalla
+            vector.project(camera);
+
+            const x = (vector.x * .5 + .5) * window.innerWidth;
+            const y = (vector.y * -.5 + .5) * window.innerHeight;
+
+            // Comprobar si el punto está detrás del globo (para ocultar etiqueta)
+            // Si z > 1, está fuera del frustum. Si está de espaldas, su normal está en contra de la cámara.
+            const cameraToMid = vector.clone().sub(camera.position);
+
+            // Si está al frente de la pantalla
+            if (vector.z < 1 && x > 0 && x < window.innerWidth && y > 0 && y < window.innerHeight) {
+                floatingLabel.style.left = `${x}px`;
+                floatingLabel.style.top = `${y}px`;
+                floatingLabel.style.display = 'block';
+            } else {
+                floatingLabel.style.display = 'none';
+            }
+        }
+
+        // Inicializar escena
+        createBackgroundRoutes();
+        drawRoute(selOrigin.value, selDest.value);
+
+        // Posición inicial de la tierra para que América y Europa sean visibles
+        earthGroup.rotation.y = -Math.PI / 4;
+        earthGroup.rotation.x = Math.PI / 8;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Rotación lenta del mundo
+            earthGroup.rotation.y += 0.0005;
+
+            updateFloatingLabel();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
